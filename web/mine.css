@@ -1,0 +1,21 @@
+.num-input{
+    border-radius: 0;
+    padding: 0.5em;
+    font-style: italic;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 16pt;
+}
+
+.input-row{
+}
+
+.my-row{
+}
+
+.big-block{
+    --bs-border-opacity: .5;
+}
+
+.group-of-3-vert{
+    
+}
