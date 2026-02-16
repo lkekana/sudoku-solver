@@ -110,34 +110,39 @@ func coloringSolve(board Grid) (Grid, bool) {
 	adjMatrix := buildAdjacencyMatrix(board)
 	vertexSaturation := initVertexSaturation(adjMatrix, board)
 	uncoloredNeighborsDegree := initUncoloredNeighborsDegrees(adjMatrix, board)
+	return coloringSolveRecursive(board, adjMatrix, vertexSaturation, uncoloredNeighborsDegree)
+}
 
-	// while not all vertices are colored
-	for !board.colouringComplete() {
-		// fmt.Printf("Current board state:\n%s\n", board.String())
-		// fmt.Printf("Current vertex saturation: %v\n", vertexSaturation)
-		// fmt.Printf("Current uncolored neighbors degree: %v\n", uncoloredNeighborsDegree)
-		i := getBrelazVertex(vertexSaturation, uncoloredNeighborsDegree, board)
-		// fmt.Printf("Selected vertex %d(row %d, col %d) with saturation %d and uncolored neighbors degree %d\n", i, i%9, i/9, vertexSaturation[i], uncoloredNeighborsDegree[i])
-		j := getSmallestAvailableColor(i, adjMatrix, board)
-		// fmt.Printf("Smallest available color for vertex %d(row %d, col %d) is %d\n", i, i%9, i/9, j)
-		if j == -1 {
-			// fmt.Printf("Current board state:\n%s\n", board.String())
-			panic("No available color for vertex " + fmt.Sprint(i))
-		}
+func coloringSolveRecursive(board Grid, adjMatrix AdjacencyMatrix, vertexSaturation [81]int, uncoloredNeighborsDegree [81]int) (Grid, bool) {
+	if board.colouringComplete() {
+		return board, isValidGrid(board)
+	}
+
+	i := getBrelazVertex(vertexSaturation, uncoloredNeighborsDegree, board)
+	availableColors := getAvailableColors(i, adjMatrix, board)
+	for _, color := range availableColors {
+		newBoard := board
+		row, col := i%9, i/9
+		newBoard[col][row] = color
+
+		newSaturation := vertexSaturation
+		newDegree := uncoloredNeighborsDegree
+
 		uncoloredNeighbors := getUncoloredNeighbors(i, adjMatrix, board)
 		for _, u := range uncoloredNeighbors {
 			uNeightborColors := getNeighborColors(u, adjMatrix, board)
-			if !slices.Contains(uNeightborColors, j) {
-				vertexSaturation[u]++
+			if !slices.Contains(uNeightborColors, color) {
+				newSaturation[u]++
 			}
-			uncoloredNeighborsDegree[u]--
+			newDegree[u]--
 		}
 
-		// color vertex i with color j
-		row, col := i%9, i/9
-		board[col][row] = j
+		if solvedBoard, ok := coloringSolveRecursive(newBoard, adjMatrix, newSaturation, newDegree); ok {
+			return solvedBoard, true
+		}
+
 	}
-	return board, isValidGrid(board)
+	return board, false
 }
 
 func getBrelazVertex(vertexSaturation [81]int, uncoloredNeighbors [81]int, board Grid) int {
@@ -235,13 +240,13 @@ func initVertexSaturation(adjMatrix AdjacencyMatrix, board Grid) [81]int {
 }
 
 func getSmallestAvailableColor(vertex int, adjMatrix AdjacencyMatrix, board Grid) int {
-	// fmt.Printf("Getting smallest available color for vertex %d(row %d, col %d)\n", vertex, vertex%9, vertex/9)
+	fmt.Printf("Getting smallest available color for vertex %d(row %d, col %d)\n", vertex, vertex%9, vertex/9)
 	colorUsed := [9]bool{}
 	neighbors := getNeighbors(vertex, adjMatrix)
 	for _, neighbor := range neighbors {
 		row, col := neighbor%9, neighbor/9
 		color := board[col][row]
-		// fmt.Printf("Neighbor vertex: %d(row %d, col %d) color: %d\n", neighbor, neighbor%9, neighbor/9, color)
+		fmt.Printf("Neighbor vertex: %d(row %d, col %d) color: %d\n", neighbor, neighbor%9, neighbor/9, color)
 		if color != 0 {
 			colorUsed[color-1] = true
 		}
@@ -252,6 +257,25 @@ func getSmallestAvailableColor(vertex int, adjMatrix AdjacencyMatrix, board Grid
 		}
 	}
 	return -1 // no available color
+}
+
+func getAvailableColors(vertex int, adjMatrix AdjacencyMatrix, board Grid) []int {
+	colorUsed := [9]bool{}
+	neighbors := getNeighbors(vertex, adjMatrix)
+	for _, neighbor := range neighbors {
+		row, col := neighbor%9, neighbor/9
+		color := board[col][row]
+		if color != 0 {
+			colorUsed[color-1] = true
+		}
+	}
+	availableColors := []int{}
+	for color := 0; color < 9; color++ {
+		if !colorUsed[color] {
+			availableColors = append(availableColors, color+1)
+		}
+	}
+	return availableColors
 }
 
 func getNeighbors(vertex int, adjMatrix AdjacencyMatrix) []int {
