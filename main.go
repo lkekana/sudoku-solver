@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"slices"
@@ -139,8 +141,12 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 
 func randomHandler(grids []Grid) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		randomIndex := time.Now().UnixNano() % int64(len(grids))
-		randomGrid := grids[randomIndex]
+        randomIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(grids))))
+        if err != nil {
+            http.Error(w, "Failed to generate random index", http.StatusInternalServerError)
+            return
+        }
+		randomGrid := grids[randomIndex.Int64()]
 
 		response := struct {
 			Grid Grid `json:"grid"`

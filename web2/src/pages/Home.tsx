@@ -4,6 +4,7 @@ import Footer from "../components/Footer";
 import Grid from "../components/Grid";
 import Header from "../components/Header";
 import SolveButton from "../components/SolveButton";
+import LoadButton from "../components/LoadButton";
 
 export type CellState = {
 	value: number;
@@ -97,6 +98,39 @@ export default function Home() {
 				);
 			});
 	};
+
+	const btnLoadClick = () => {
+		fetch("http://localhost:5000/random")
+			.then((response) => response.json())
+			.then((data) => {
+				console.log("Random puzzle data:", data);
+				if (data.grid) {
+					const puzzle: number[][] = data.grid;
+					console.log("Random puzzle grid:", puzzle);
+					const newGrid: CellState[] = [];
+					for (let i = 0; i < 9; i++) {
+						for (let j = 0; j < 9; j++) {
+							const index = i * 9 + j;
+							newGrid.push({
+								value: puzzle[i][j],
+								isGiven: puzzle[i][j] !== 0,
+								clear: false,
+							});
+						}
+					}
+					setGrid(newGrid);
+				} else {
+					alert("Failed to load a random puzzle.");
+				}
+			})
+			.catch((error) => {
+				console.error("Error loading random puzzle:", error);
+				alert(
+					"An error occurred while loading a random puzzle. Please try again.",
+				);
+			});
+	};
+
 	const btnClearClick = () => {
 		// clear inputs
 		setGrid(Array(81).fill({ value: 0, isGiven: false, clear: false }));
@@ -118,6 +152,7 @@ export default function Home() {
 					<div className="mt-2 d-grid gap-2 d-sm-flex justify-content-sm-center">
 						<SolveButton onClickFn={btnSolveClick} />
 						<ClearButton onClickFn={btnClearClick} />
+						<LoadButton onClickFn={btnLoadClick} />
 					</div>
 				</div>
 			</div>
