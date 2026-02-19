@@ -1,4 +1,3 @@
-import { useState } from "react";
 import Block from "./Block";
 import { CellState } from "../pages/Home";
 

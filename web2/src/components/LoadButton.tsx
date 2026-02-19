@@ -8,7 +8,7 @@ export default function LoadButton({ onClickFn }: LoadButtonProps) {
 			id="btn-load"
 			onClick={onClickFn}
 		>
-			Load Random
+			Random ⚄
 		</button>
 	);
 }

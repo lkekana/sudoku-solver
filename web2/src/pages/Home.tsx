@@ -12,23 +12,9 @@ export type CellState = {
 	clear: boolean;
 };
 
-const samplePuzzle: number[] = [
-	5, 3, 0, 0, 7, 0, 0, 0, 0, 6, 0, 0, 1, 9, 5, 0, 0, 0, 0, 9, 8, 0, 0, 0, 0,
-	6, 0, 8, 0, 0, 0, 6, 0, 0, 0, 3, 4, 0, 0, 8, 0, 3, 0, 0, 1, 7, 0, 0, 0, 2,
-	0, 0, 0, 6, 0, 6, 0, 0, 0, 0, 2, 8, 0, 0, 0, 0, 4, 1, 9, 0, 0, 5, 0, 0, 0,
-	0, 8, 0, 0, 7, 9,
-];
-
 export default function Home() {
-	console.log("Sample puzzle:", samplePuzzle);
-	// const [grid, setGrid] = useState<CellState[]>(Array(81).fill({ value: 0, isGiven: false, clear: false }));
-	const [grid, setGrid] = useState<CellState[]>(
-		samplePuzzle.map((val) => ({
-			value: val,
-			isGiven: val !== 0,
-			clear: false,
-		})),
-	);
+	const [grid, setGrid] = useState<CellState[]>(Array(81).fill({ value: 0, isGiven: false, clear: false }));
+	const [solveTime, setSolveTime] = useState<string | undefined>(undefined);
 	const numValChanged = (e: React.ChangeEvent<HTMLInputElement>) => {
 		// update state here
 		const inputValue = e.target.value;
@@ -55,13 +41,24 @@ export default function Home() {
 
 	const btnSolveClick = () => {
 		// trigger solve
+		let clueCount = 0;
 		const payload: number[][] = [];
 		for (let i = 0; i < 9; i++) {
 			const row: number[] = [];
 			for (let j = 0; j < 9; j++) {
 				row.push(grid[i * 9 + j].value);
+				if (grid[i * 9 + j].value !== 0) {
+					clueCount++;
+				}
 			}
 			payload.push(row);
+		}
+
+		if (clueCount < 17) {
+			alert(
+				"At least 17 clues are required for a valid Sudoku puzzle. Please add more numbers.",
+			);
+			return;
 		}
 
 		fetch("http://localhost:5000/solve", {
@@ -87,6 +84,9 @@ export default function Home() {
 						}
 					}
 					setGrid(newGrid);
+					if (data.solveTime) {
+						setSolveTime(data.solveTime);
+					}
 				} else {
 					alert("No solution found for the given puzzle.");
 				}
@@ -103,14 +103,11 @@ export default function Home() {
 		fetch("http://localhost:5000/random")
 			.then((response) => response.json())
 			.then((data) => {
-				console.log("Random puzzle data:", data);
 				if (data.grid) {
 					const puzzle: number[][] = data.grid;
-					console.log("Random puzzle grid:", puzzle);
 					const newGrid: CellState[] = [];
 					for (let i = 0; i < 9; i++) {
 						for (let j = 0; j < 9; j++) {
-							const index = i * 9 + j;
 							newGrid.push({
 								value: puzzle[i][j],
 								isGiven: puzzle[i][j] !== 0,
@@ -119,6 +116,7 @@ export default function Home() {
 						}
 					}
 					setGrid(newGrid);
+					setSolveTime(undefined);
 				} else {
 					alert("Failed to load a random puzzle.");
 				}
@@ -134,6 +132,7 @@ export default function Home() {
 	const btnClearClick = () => {
 		// clear inputs
 		setGrid(Array(81).fill({ value: 0, isGiven: false, clear: false }));
+		setSolveTime(undefined);
 	};
 
 	return (
@@ -148,6 +147,11 @@ export default function Home() {
 						the see the solution.
 					</p>
 					<Grid cellChangeFn={numValChanged} grid={grid} />
+					{solveTime && (
+						<p className="mt-2">
+							Solved in <strong>{solveTime}</strong> seconds!
+						</p>
+					)}
 
 					<div className="mt-2 d-grid gap-2 d-sm-flex justify-content-sm-center">
 						<SolveButton onClickFn={btnSolveClick} />
