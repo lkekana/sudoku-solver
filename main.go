@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -12,6 +14,10 @@ import (
 // Grid represents a 9x9 Sudoku board (0 = empty)
 type Grid [9][9]int
 type AdjacencyMatrix [81][81]bool
+
+var allowedOrigins = []string{
+	"http://localhost:5173", // frontend origin
+}
 
 func (g Grid) String() string {
 	var sb strings.Builder
@@ -77,8 +83,87 @@ func (m AdjacencyMatrix) String() string {
 	return sb.String()
 }
 
+func corsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defaultOrigin := "http://localhost:5173"
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = defaultOrigin
+		}
+        w.Header().Set("Access-Control-Allow-Origin", origin)
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+        if r.Method == http.MethodOptions {
+            w.WriteHeader(http.StatusNoContent)
+            return
+        }
+
+        next.ServeHTTP(w, r)
+    })
+}
+
+func solveHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// var g Grid
+	var input struct {
+		Grid Grid `json:"grid"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		fmt.Printf("Error decoding JSON: %v\n", err)
+		http.Error(w, "Invalid grid format", http.StatusBadRequest)
+		return
+	}
+
+	solution, solved := backtrackingSolve(input.Grid)
+	if !solved {
+		http.Error(w, "No solution exists", http.StatusUnprocessableEntity)
+		return
+	}
+
+	response := struct {
+		Solution Grid `json:"solution"`
+	}{
+		Solution: solution,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	// w.Header().Set("Access-Control-Allow-Origin", "*") // Allow all origins (or specify specific domains)
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173") // Allow your frontend origin
+	json.NewEncoder(w).Encode(response)
+}
+
+func randomHandler(grids []Grid) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		randomIndex := time.Now().UnixNano() % int64(len(grids))
+		randomGrid := grids[randomIndex]
+
+		response := struct {
+			Grid Grid `json:"grid"`
+		}{
+			Grid: randomGrid,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
 func main() {
-	test()
+	// test()
+	grids := loadPuzzles()
+
+	// Serve static files (HTML/CSS/JS)
+	fs := http.FileServer(http.Dir("./static"))
+	http.Handle("/", corsMiddleware(fs))
+	http.Handle("/solve", corsMiddleware(http.HandlerFunc(solveHandler)))
+	http.Handle("/random", corsMiddleware(http.HandlerFunc(randomHandler(grids))))
+	log.Println("Server running at http://localhost:5000")
+	log.Fatal(http.ListenAndServe(":5000", nil))
 }
 
 // Backtracking solver (efficient for standard Sudoku)
@@ -377,7 +462,7 @@ func isValidGrid(board Grid) bool {
 	return true
 }
 
-func test() {
+func loadPuzzles() []Grid {
 	// Test puzzles from github.com/dimitri/sudoku
 	f, err := os.ReadFile("sudoku.txt")
 	if err != nil {
@@ -421,8 +506,11 @@ func test() {
 			lineCount = 0
 		}
     }
+	return grids
+}
 
-
+func test() {
+	grids := loadPuzzles()
 	log.Printf("Solving %d Sudoku puzzles via backtracking...\n", len(grids))
 	backtrackingResultsArray := make([]struct {
 		solution Grid
