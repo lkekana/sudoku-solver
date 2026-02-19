@@ -111,7 +111,11 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// var g Grid
+	method := r.URL.Query().Get("method")
+	if method != "backtracking" && method != "coloring" {
+		method = "coloring"
+	}
+
 	var input struct {
 		Grid Grid `json:"grid"`
 	}
@@ -121,7 +125,22 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	solution, solved := backtrackingSolve(input.Grid)
+	if !input.Grid.canBeSolved() {
+		http.Error(w, "Puzzle cannot be solved (too few clues)", http.StatusUnprocessableEntity)
+		return
+	}
+
+	var solution Grid
+	var solved bool
+
+	startTime := time.Now()
+	if method == "backtracking" {
+		solution, solved = backtrackingSolve(input.Grid)
+	} else {
+		solution, solved = coloringSolve(input.Grid)
+	}
+	endTime := time.Now()
+
 	if !solved {
 		http.Error(w, "No solution exists", http.StatusUnprocessableEntity)
 		return
@@ -129,24 +148,48 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 
 	response := struct {
 		Solution Grid `json:"solution"`
+		SolveTime string `json:"solveTime"`
 	}{
 		Solution: solution,
+		SolveTime: endTime.Sub(startTime).String(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	// w.Header().Set("Access-Control-Allow-Origin", "*") // Allow all origins (or specify specific domains)
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173") // Allow your frontend origin
 	json.NewEncoder(w).Encode(response)
 }
 
-func randomHandler(grids []Grid) http.HandlerFunc {
+func randomHandler(easyPuzzles, hardPuzzles, hardestPuzzles []Grid) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-        randomIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(grids))))
-        if err != nil {
-            http.Error(w, "Failed to generate random index", http.StatusInternalServerError)
-            return
-        }
-		randomGrid := grids[randomIndex.Int64()]
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		difficulty := r.URL.Query().Get("difficulty")
+		pool := []Grid{}
+		if difficulty == "easy" {
+			pool = easyPuzzles
+		} else if difficulty == "hard" {
+			pool = hardPuzzles
+		} else if difficulty == "hardest" {
+			pool = hardestPuzzles
+		} else {
+			// if no valid difficulty is provided, use all puzzles
+			pool = append(pool, easyPuzzles...)
+			pool = append(pool, hardPuzzles...)
+			pool = append(pool, hardestPuzzles...)
+		}
+
+		poolSize := len(pool)
+		startTime := time.Now()
+		randomIndex, err := rand.Int(rand.Reader, big.NewInt(int64(poolSize)))
+		if err != nil {
+			http.Error(w, "Failed to generate random index", http.StatusInternalServerError)
+			return
+		}
+		randomGrid := pool[randomIndex.Int64()]
+		endTime := time.Now()
+		log.Printf("Random puzzle generated in %s\n", endTime.Sub(startTime))
 
 		response := struct {
 			Grid Grid `json:"grid"`
@@ -159,15 +202,20 @@ func randomHandler(grids []Grid) http.HandlerFunc {
 	}
 }
 
+
 func main() {
 	// test()
-	grids := loadPuzzles()
+
+	easyPuzzles := loadPuzzleFromFile("puzzles/easy50.txt")
+	hardPuzzles := loadPuzzleFromFile("puzzles/top95.txt")
+	hardestPuzzles := loadPuzzleFromFile("puzzles/hardest.txt")
+	log.Printf("Loaded %d easy puzzles, %d hard puzzles, %d hardest puzzles\n", len(easyPuzzles), len(hardPuzzles), len(hardestPuzzles))
 
 	// Serve static files (HTML/CSS/JS)
 	fs := http.FileServer(http.Dir("./static"))
 	http.Handle("/", corsMiddleware(fs))
 	http.Handle("/solve", corsMiddleware(http.HandlerFunc(solveHandler)))
-	http.Handle("/random", corsMiddleware(http.HandlerFunc(randomHandler(grids))))
+	http.Handle("/random", corsMiddleware(http.HandlerFunc(randomHandler(easyPuzzles, hardPuzzles, hardestPuzzles))))
 	log.Println("Server running at http://localhost:5000")
 	log.Fatal(http.ListenAndServe(":5000", nil))
 }
@@ -194,10 +242,9 @@ func backtrackingSolve(board Grid) (Grid, bool) {
 	return board, true
 }
 
-// use Brelaz Graph Coloring algorithm to solve Sudoku (not as efficient as backtracking for standard puzzles, but interesting to implement)
+// use Brelaz Graph Coloring algorithm to solve Sudoku
 // we will use each digit (1-9) as a color
 func coloringSolve(board Grid) (Grid, bool) {
-	// fmt.Printf("Initial board state:\n%s\n", board.String())
 	adjMatrix := buildAdjacencyMatrix(board)
 	vertexSaturation := initVertexSaturation(adjMatrix, board)
 	uncoloredNeighborsDegree := initUncoloredNeighborsDegrees(adjMatrix, board)
@@ -330,26 +377,6 @@ func initVertexSaturation(adjMatrix AdjacencyMatrix, board Grid) [81]int {
 	return vertexSaturation
 }
 
-func getSmallestAvailableColor(vertex int, adjMatrix AdjacencyMatrix, board Grid) int {
-	fmt.Printf("Getting smallest available color for vertex %d(row %d, col %d)\n", vertex, vertex%9, vertex/9)
-	colorUsed := [9]bool{}
-	neighbors := getNeighbors(vertex, adjMatrix)
-	for _, neighbor := range neighbors {
-		row, col := neighbor%9, neighbor/9
-		color := board[col][row]
-		fmt.Printf("Neighbor vertex: %d(row %d, col %d) color: %d\n", neighbor, neighbor%9, neighbor/9, color)
-		if color != 0 {
-			colorUsed[color-1] = true
-		}
-	}
-	for color := 0; color < 9; color++ {
-		if !colorUsed[color] {
-			return color + 1
-		}
-	}
-	return -1 // no available color
-}
-
 func getAvailableColors(vertex int, adjMatrix AdjacencyMatrix, board Grid) []int {
 	colorUsed := [9]bool{}
 	neighbors := getNeighbors(vertex, adjMatrix)
@@ -468,55 +495,48 @@ func isValidGrid(board Grid) bool {
 	return true
 }
 
-func loadPuzzles() []Grid {
-	// Test puzzles from github.com/dimitri/sudoku
-	f, err := os.ReadFile("sudoku.txt")
+func loadPuzzleFromFile(filePath string) []Grid {
+	result := []Grid{}
+	f, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	var grids []Grid
 	rows := strings.Split(strings.TrimSpace(string(f)), "\n")
-	var lineCount int = 0
-	var gridCount int = 0
-	var tmpGrid Grid
     for _, raw := range rows {
-        row := strings.TrimSpace(raw)
-		if strings.HasPrefix(row, "Grid") {
-			tmpGrid = Grid{} // reset grid for new puzzle
-			continue
+		row := strings.TrimSpace(raw)
+		if len(row) != 81 {
+			continue // skip invalid rows
 		}
-        if len(row) != 9 {
-            continue // skip invalid rows
-        }
-        i := 0
-        for _, ch := range row {
-            if i >= 9 {
-                break
-            }
-            if ch >= '0' && ch <= '9' {
-                tmpGrid[lineCount][i] = int(ch - '0')
-            } else {
-                tmpGrid[lineCount][i] = 0
-            }
-            i++
-        }
-		lineCount++
-		if lineCount == 9 {
-			if !tmpGrid.canBeSolved() {
-				log.Printf("Grid %d has less than 17 clues (multiple solutions possible) skipping...\n", gridCount+1)
+		var grid Grid
+		wellFormed := true
+		for i, ch := range row {
+			if ch == '.' || ch == '0' {
+				grid[i/9][i%9] = 0
+			} else if ch >= '1' && ch <= '9' {
+				grid[i/9][i%9] = int(ch - '0')
 			} else {
-				grids = append(grids, tmpGrid)
-				gridCount++
+				log.Printf("Invalid character '%c' in puzzle, skipping...\n", ch)
+				wellFormed = false
+				continue
 			}
-			lineCount = 0
 		}
-    }
-	return grids
+		if wellFormed {
+			result = append(result, grid)
+		}
+	}
+	return result
 }
 
 func test() {
-	grids := loadPuzzles()
+	easyPuzzles := loadPuzzleFromFile("puzzles/easy50.txt")
+	hardPuzzles := loadPuzzleFromFile("puzzles/top95.txt")
+	hardestPuzzles := loadPuzzleFromFile("puzzles/hardest.txt")
+	log.Printf("Loaded %d easy puzzles, %d hard puzzles, %d hardest puzzles\n", len(easyPuzzles), len(hardPuzzles), len(hardestPuzzles))
+
+	// combine all 3 puzzles into one array for testing
+	grids := append(easyPuzzles, hardPuzzles...)
+	grids = append(grids, hardestPuzzles...)
+
 	log.Printf("Solving %d Sudoku puzzles via backtracking...\n", len(grids))
 	backtrackingResultsArray := make([]struct {
 		solution Grid
@@ -580,5 +600,4 @@ func test() {
 	}
 	avgDuration = time.Duration(totalDuration / len(coloringResultsArray))
 	log.Printf("Average time taken per puzzle: %s\n", avgDuration)
-	// println("Is the solution valid?", isValidGrid(solution))
 }
