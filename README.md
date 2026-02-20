@@ -35,7 +35,9 @@ After reducing the 9x9 grid to a smaller 2x2 and assigning a letter to each cell
 ![2x2](./assets/4x4.png)
 
 then, representing the related cells using a graph:
-![2x2graph](./assets/graph.png)
+<div style="display: flex; justify-content: center; gap: 10px;">
+  <img src="./assets/graph.png" alt="A graph representation of the 2x2 Sudoku puzzle" height="299" width="287"/>
+</div>
 
 This just becomes [a math problem](https://en.wikipedia.org/wiki/Discrete_mathematics). While messy visually, it's rather straightforward for a computer. (Thanks to my DSA class) I realised that by connecting the numbers that are related to one another and limit the available numbers (let's call them neighbours), choosing a number to fill in is just graph coloring.
 
@@ -96,7 +98,7 @@ cd ..
 ```bash
 go run main.go
 ```
-- open your browser and navigate to `http://localhost:5173` to see the web interface
+- open your browser and navigate to `http://localhost:5000` to see the web interface
 
 ## Credit
 - [Bootstrap](https://getbootstrap.com/) for the visual elements
