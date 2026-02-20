@@ -13,7 +13,9 @@ export type CellState = {
 };
 
 export default function Home() {
-	const [grid, setGrid] = useState<CellState[]>(Array(81).fill({ value: 0, isGiven: false, clear: false }));
+	const [grid, setGrid] = useState<CellState[]>(
+		Array(81).fill({ value: 0, isGiven: false, clear: false }),
+	);
 	const [solveTime, setSolveTime] = useState<string | undefined>(undefined);
 	const numValChanged = (e: React.ChangeEvent<HTMLInputElement>) => {
 		// update state here
@@ -68,7 +70,13 @@ export default function Home() {
 			},
 			body: JSON.stringify({ grid: payload }),
 		})
-			.then((response) => response.json())
+			.then(async (response) => {
+				if (response.status === 422) {
+					alert(await response.text());
+					throw new Error("Invalid puzzle input");
+				}
+				return response.json();
+			})
 			.then((data) => {
 				if (data.solution) {
 					const solution: number[][] = data.solution;
@@ -100,7 +108,7 @@ export default function Home() {
 	};
 
 	const btnLoadClick = () => {
-		fetch("http://localhost:5000/random")
+		fetch("http://localhost:5000/random?difficulty=easy")
 			.then((response) => response.json())
 			.then((data) => {
 				if (data.grid) {
@@ -140,16 +148,17 @@ export default function Home() {
 			<Header />
 
 			<div className="px-4 my-1 text-center">
-				<h1 className="display-5 fw-bold"></h1>
 				<div className="col-lg-6 mx-auto">
 					<p className="lead mb-2">
-						Enter the numbers in the puzzle & click on 'Solve' to
-						the see the solution.
+						{/* Enter the numbers in the puzzle & click on 'Solve' to
+						the see the solution. */}
+						Fill in some puzzle clues and click "Solve" to see the
+						solution!
 					</p>
 					<Grid cellChangeFn={numValChanged} grid={grid} />
 					{solveTime && (
 						<p className="mt-2">
-							Solved in <strong>{solveTime}</strong> seconds!
+							Solved in <strong>{solveTime}</strong>!
 						</p>
 					)}
 

@@ -1,5 +1,5 @@
 import Block from "./Block";
-import { CellState } from "../pages/Home";
+import type { CellState } from "../pages/Home";
 
 type GridProps = {
 	cellChangeFn: (e: React.ChangeEvent<HTMLInputElement>) => void;

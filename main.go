@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/fatih/color"
 )
 
 // Grid represents a 9x9 Sudoku board (0 = empty)
@@ -45,7 +47,7 @@ func (g Grid) String() string {
 	return sb.String()
 }
 
-func (g Grid) canBeSolved() bool {
+func (g Grid) canBeSolved() error {
 	// A puzzle needs a minimum of 17 clues to have a unique solution (https://arxiv.org/abs/1201.0749)
 	clueCount := 0
 	for _, row := range g {
@@ -53,12 +55,51 @@ func (g Grid) canBeSolved() bool {
 			if num != 0 {
 				clueCount++
 			}
+			if num < 0 || num > 9 {
+				return fmt.Errorf("Invalid number %d in grid", num)
+			}
 		}
 	}
 	if clueCount < 17 {
-		return false
+		return fmt.Errorf("Not enough clues (%d) to guarantee a unique solution", clueCount)
 	}
-	return true
+
+	// Check for duplicate numbers in rows, columns, and boxes
+	for i := 0; i < 9; i++ {
+		rowSet := make(map[int]bool)
+		colSet := make(map[int]bool)
+		boxSet := make(map[int]bool)
+		for j := 0; j < 9; j++ {
+			// Check row
+			x := g[i][j]
+			if x != 0 {
+				if rowSet[x] {
+					return fmt.Errorf("Duplicate number %d found in row %d", x, i)
+				}
+				rowSet[x] = true
+			}
+
+			// Check column
+			y := g[j][i]
+			if y != 0 {
+				if colSet[y] {
+					return fmt.Errorf("Duplicate number %d found in column %d", y, i)
+				}
+				colSet[y] = true
+			}
+
+			// Check box
+			boxRow, boxCol := 3*(i/3), 3*(i%3)
+			z := g[boxRow+j/3][boxCol+j%3]
+			if z != 0 {
+				if boxSet[z] {
+					return fmt.Errorf("Duplicate number %d found in box at row %d, column %d", z, boxRow, boxCol)
+				}
+				boxSet[z] = true
+			}
+		}
+	}
+	return nil
 }
 
 func (g Grid) colouringComplete() bool {
@@ -127,8 +168,8 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !input.Grid.canBeSolved() {
-		http.Error(w, "Puzzle cannot be solved (too few clues)", http.StatusUnprocessableEntity)
+	if err := input.Grid.canBeSolved(); err != nil {
+		http.Error(w, "Puzzle cannot be solved: "+err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 
@@ -614,7 +655,7 @@ func test() {
 	hardestPuzzles := loadPuzzleFromFile("puzzles/hardest.txt")
 
 	totalPuzzleCount := len(easyPuzzles) + len(hardPuzzles) + len(hardestPuzzles)
-	fmt.Printf("\nSolving %d Sudoku puzzles via backtracking...\n", totalPuzzleCount)
+	fmt.Printf("\n\nSolving %d Sudoku puzzles via backtracking...\n", totalPuzzleCount)
 	backtrackingResultsArray := make([]struct {
 		solution Grid
 		solved   bool
@@ -686,9 +727,10 @@ func test() {
 	easyAvgDuration := time.Duration(easyDuration / len(easyPuzzles))
 	hardAvgDuration := time.Duration(hardDuration / len(hardPuzzles))
 	hardestAvgDuration := time.Duration(hardestDuration / len(hardestPuzzles))
-	fmt.Printf("> %d easy puzzles solved in %s\t (average time: %s)\n", len(easyPuzzles), time.Duration(easyDuration), easyAvgDuration)
-	fmt.Printf("> %d hard puzzles solved in %s\t (average time: %s)\n", len(hardPuzzles), time.Duration(hardDuration), hardAvgDuration)
-	fmt.Printf("> %d hardest puzzles solved in %s\t (average time: %s)\n", len(hardestPuzzles), time.Duration(hardestDuration), hardestAvgDuration)
+	coloringDuration := easyDuration + hardDuration + hardestDuration
+	fmt.Printf("> %d %s puzzles solved in %s   \t (average time: %s)\n", len(easyPuzzles), color.GreenString("easy"), time.Duration(easyDuration), easyAvgDuration)
+	fmt.Printf("> %d %s puzzles solved in %s   \t (average time: %s)\n", len(hardPuzzles), color.YellowString("hard"), time.Duration(hardDuration), hardAvgDuration)
+	fmt.Printf("> %d %s puzzles solved in %s   \t (average time: %s)\n", len(hardestPuzzles), color.RedString("hardest"), time.Duration(hardestDuration), hardestAvgDuration)
 
 	println()
 
@@ -764,7 +806,11 @@ func test() {
 	easyAvgDuration = time.Duration(easyDuration / len(easyPuzzles))
 	hardAvgDuration = time.Duration(hardDuration / len(hardPuzzles))
 	hardestAvgDuration = time.Duration(hardestDuration / len(hardestPuzzles))
-	fmt.Printf("> %d easy puzzles solved in %s\t (average time: %s)\n", len(easyPuzzles), time.Duration(easyDuration), easyAvgDuration)
-	fmt.Printf("> %d hard puzzles solved in %s\t (average time: %s)\n", len(hardPuzzles), time.Duration(hardDuration), hardAvgDuration)
-	fmt.Printf("> %d hardest puzzles solved in %s\t (average time: %s)\n", len(hardestPuzzles), time.Duration(hardestDuration), hardestAvgDuration)
+	backtrackingDuration := easyDuration + hardDuration + hardestDuration
+	fmt.Printf("> %d %s puzzles solved in %s   \t (average time: %s)\n", len(easyPuzzles), color.GreenString("easy"), time.Duration(easyDuration), easyAvgDuration)
+	fmt.Printf("> %d %s puzzles solved in %s   \t (average time: %s)\n", len(hardPuzzles), color.YellowString("hard"), time.Duration(hardDuration), hardAvgDuration)
+	fmt.Printf("> %d %s puzzles solved in %s   \t (average time: %s)\n", len(hardestPuzzles), color.RedString("hardest"), time.Duration(hardestDuration), hardestAvgDuration)
+
+	ratio := float64(coloringDuration) / float64(backtrackingDuration)
+	fmt.Printf("\nOverall, graph coloring was faster than backtracking by a factor of %.2f\n\n\n", ratio)
 }

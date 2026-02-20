@@ -1,4 +1,4 @@
-import { CellState } from "../pages/Home";
+import type { CellState } from "../pages/Home";
 
 type CellProps = {
 	row: number;

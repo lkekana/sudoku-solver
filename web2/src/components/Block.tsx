@@ -1,4 +1,4 @@
-import { CellState } from "../pages/Home";
+import type { CellState } from "../pages/Home";
 import Cell from "./Cell";
 
 type BlockProps = {
