@@ -21,6 +21,8 @@ var allowedOrigins = []string{
 	"http://localhost:5173", // frontend origin
 }
 
+var adjMatrix, neighbors, graphDegrees = buildAdjacencyMatrix()
+
 func (g Grid) String() string {
 	var sb strings.Builder
 	for i, row := range g {
@@ -204,7 +206,15 @@ func randomHandler(easyPuzzles, hardPuzzles, hardestPuzzles []Grid) http.Handler
 
 
 func main() {
-	// test()
+	fmt.Printf("Starting Sudoku solver server...\n")
+
+	if len(os.Args) > 1 {
+        if os.Args[1] == "test" {
+			fmt.Printf("Testing solvers on sample puzzles...\n")
+			test()
+			return
+		}
+    }
 
 	easyPuzzles := loadPuzzleFromFile("puzzles/easy50.txt")
 	hardPuzzles := loadPuzzleFromFile("puzzles/top95.txt")
@@ -245,19 +255,19 @@ func backtrackingSolve(board Grid) (Grid, bool) {
 // use Brelaz Graph Coloring algorithm to solve Sudoku
 // we will use each digit (1-9) as a color
 func coloringSolve(board Grid) (Grid, bool) {
-	adjMatrix := buildAdjacencyMatrix(board)
-	vertexSaturation := initVertexSaturation(adjMatrix, board)
-	uncoloredNeighborsDegree := initUncoloredNeighborsDegrees(adjMatrix, board)
-	return coloringSolveRecursive(board, adjMatrix, vertexSaturation, uncoloredNeighborsDegree)
+	vertexSaturation := initVertexSaturation(board)
+	uncoloredNeighborsDegree := initUncoloredNeighborsDegrees(board)
+	return coloringSolveRecursive(board, vertexSaturation, uncoloredNeighborsDegree)
 }
 
-func coloringSolveRecursive(board Grid, adjMatrix AdjacencyMatrix, vertexSaturation [81]int, uncoloredNeighborsDegree [81]int) (Grid, bool) {
+func coloringSolveRecursive(board Grid, vertexSaturation [81]int, uncoloredNeighborsDegree [81]int) (Grid, bool) {
 	if board.colouringComplete() {
 		return board, isValidGrid(board)
 	}
 
 	i := getBrelazVertex(vertexSaturation, uncoloredNeighborsDegree, board)
-	availableColors := getAvailableColors(i, adjMatrix, board)
+	availableColors := getAvailableColors(i, board)
+	// availableColors := b_getAvailableColors(i, board)
 	for _, color := range availableColors {
 		newBoard := board
 		row, col := i%9, i/9
@@ -266,16 +276,18 @@ func coloringSolveRecursive(board Grid, adjMatrix AdjacencyMatrix, vertexSaturat
 		newSaturation := vertexSaturation
 		newDegree := uncoloredNeighborsDegree
 
-		uncoloredNeighbors := getUncoloredNeighbors(i, adjMatrix, board)
+		uncoloredNeighbors := getUncoloredNeighbors(i, board)
+		// uncoloredNeighbors := b_getUncoloredNeighbors(i, board)
 		for _, u := range uncoloredNeighbors {
-			uNeightborColors := getNeighborColors(u, adjMatrix, board)
-			if !slices.Contains(uNeightborColors, color) {
+			uNeighborColors := getNeighborColors(u, board)
+			// uNeighborColors := b_getNeighborColors(u, board)
+			if !slices.Contains(uNeighborColors, color) {
 				newSaturation[u]++
 			}
 			newDegree[u]--
 		}
 
-		if solvedBoard, ok := coloringSolveRecursive(newBoard, adjMatrix, newSaturation, newDegree); ok {
+		if solvedBoard, ok := coloringSolveRecursive(newBoard, newSaturation, newDegree); ok {
 			return solvedBoard, true
 		}
 
@@ -302,48 +314,50 @@ func getBrelazVertex(vertexSaturation [81]int, uncoloredNeighbors [81]int, board
 	return selectedVertex
 }
 
-func buildAdjacencyMatrix(board Grid) AdjacencyMatrix {
+func buildAdjacencyMatrix() (AdjacencyMatrix, [81][]int, [81]int) {
 	var adjMatrix AdjacencyMatrix
+	var neighbors [81][]int
+	var degrees [81]int
 	for row := 0; row < 9; row++ {
 		for col := 0; col < 9; col++ {
 			idx := row*9 + col
 			// Row and column neighbors
 			for i := 0; i < 9; i++ {
-				adjMatrix[idx][row*9+i] = true
-				adjMatrix[idx][i*9+col] = true
+				if !adjMatrix[idx][row*9+i] {
+                    adjMatrix[idx][row*9+i] = true
+                    neighbors[idx] = append(neighbors[idx], row*9+i)
+                    degrees[idx]++
+                }
+                if !adjMatrix[idx][i*9+col] {
+                    adjMatrix[idx][i*9+col] = true
+                    neighbors[idx] = append(neighbors[idx], i*9+col)
+                    degrees[idx]++
+                }
 			}
 			// Box neighbors
 			boxRow, boxCol := 3*(row/3), 3*(col/3)
 			for i := 0; i < 3; i++ {
 				for j := 0; j < 3; j++ {
 					r, c := boxRow+i, boxCol+j
-					adjMatrix[idx][r*9+c] = true
+					if !adjMatrix[idx][r*9+c] {
+                        adjMatrix[idx][r*9+c] = true
+                        neighbors[idx] = append(neighbors[idx], r*9+c)
+                        degrees[idx]++
+                    }
 				}
 			}
 			adjMatrix[idx][idx] = false // a vertex is not adjacent to itself
 		}
 	}
-	return adjMatrix
+	return adjMatrix, neighbors, degrees
 }
 
-func getGraphDegrees(adjMatrix AdjacencyMatrix) [81]int {
-	var degrees [81]int
-	for i := 0; i < 81; i++ {
-		for j := 0; j < 81; j++ {
-			if adjMatrix[i][j] {
-				degrees[i]++
-			}
-		}
-	}
-	return degrees
-}
-
-func initUncoloredNeighborsDegrees(adjMatrix AdjacencyMatrix, board Grid) [81]int {
-	degrees := getGraphDegrees(adjMatrix)
+func initUncoloredNeighborsDegrees(board Grid) [81]int {
+	degrees := graphDegrees
 	for i := 0; i < 81; i++ {
 		row, col := i % 9, i / 9
 		if board[col][row] != 0 {
-			neighbors := getNeighbors(i, adjMatrix)
+			neighbors := getNeighbors(i)
 			for _, neighbor := range neighbors {
 				degrees[neighbor]--
 			}
@@ -352,7 +366,7 @@ func initUncoloredNeighborsDegrees(adjMatrix AdjacencyMatrix, board Grid) [81]in
 	return degrees
 }
 
-func initVertexSaturation(adjMatrix AdjacencyMatrix, board Grid) [81]int {
+func initVertexSaturation(board Grid) [81]int {
 	var vertexSaturation [81]int
 	for i := 0; i < 81; i++ {
 		usedColors := [10]bool{}
@@ -377,9 +391,9 @@ func initVertexSaturation(adjMatrix AdjacencyMatrix, board Grid) [81]int {
 	return vertexSaturation
 }
 
-func getAvailableColors(vertex int, adjMatrix AdjacencyMatrix, board Grid) []int {
+func getAvailableColors(vertex int, board Grid) []int {
 	colorUsed := [9]bool{}
-	neighbors := getNeighbors(vertex, adjMatrix)
+	neighbors := getNeighbors(vertex)
 	for _, neighbor := range neighbors {
 		row, col := neighbor%9, neighbor/9
 		color := board[col][row]
@@ -396,19 +410,39 @@ func getAvailableColors(vertex int, adjMatrix AdjacencyMatrix, board Grid) []int
 	return availableColors
 }
 
-func getNeighbors(vertex int, adjMatrix AdjacencyMatrix) []int {
-	neighbors := []int{}
-	for i := 0; i < 81; i++ {
-		if adjMatrix[vertex][i] {
-			neighbors = append(neighbors, i)
-		}
-	}
-	return neighbors
+// optimized version of getAvailableColors using bitmasking
+func b_getAvailableColors(vertex int, board Grid) []int {
+    // Use a bitmask to track used colors (1-9)
+    var colorMask uint16 = 0
+    neighbors := getNeighbors(vertex)
+
+    // Mark colors used by neighbors
+    for _, neighbor := range neighbors {
+        row, col := neighbor%9, neighbor/9
+        color := board[col][row]
+        if color != 0 {
+            colorMask |= (1 << (color - 1)) // Set the bit for the used color
+        }
+    }
+
+    // Collect available colors
+    availableColors := []int{}
+    for color := 1; color <= 9; color++ {
+        if colorMask&(1<<(color-1)) == 0 { // Check if the bit for this color is not set
+            availableColors = append(availableColors, color)
+        }
+    }
+
+    return availableColors
 }
 
-func getNeighborColors(vertex int, adjMatrix AdjacencyMatrix, board Grid) []int {
+func getNeighbors(vertex int) []int {
+	return neighbors[vertex]
+}
+
+func getNeighborColors(vertex int, board Grid) []int {
 	colors := []int{}
-	neighbors := getNeighbors(vertex, adjMatrix)
+	neighbors := getNeighbors(vertex)
 	for _, neighbor := range neighbors {
 		row, col := neighbor%9, neighbor/9
 		color := board[col][row]
@@ -419,12 +453,59 @@ func getNeighborColors(vertex int, adjMatrix AdjacencyMatrix, board Grid) []int 
 	return colors
 }
 
-func getUncoloredNeighbors(vertex int, adjMatrix AdjacencyMatrix, board Grid) []int {
+// optimized version of getNeighborColors using bitmasking
+func b_getNeighborColors(vertex int, board Grid) []int {
+    // Use a bitmask to track used colors (1-9)
+    var colorMask uint16 = 0
+    neighbors := getNeighbors(vertex)
+
+    for _, neighbor := range neighbors {
+        row, col := neighbor%9, neighbor/9
+        color := board[col][row]
+        if color != 0 {
+            colorMask |= (1 << (color - 1)) // Set the bit for the used color
+        }
+    }
+
+    // Collect used colors
+	usedColors := []int{}
+	for color := 1; color <= 9; color++ {
+		if colorMask&(1<<(color-1)) != 0 { // Check if the bit for this color is set
+			usedColors = append(usedColors, color)
+		}
+	}
+	return usedColors
+}
+
+func getUncoloredNeighbors(vertex int, board Grid) []int {
 	uncoloredNeighbors := []int{}
-	neighbors := getNeighbors(vertex, adjMatrix)
+	neighbors := getNeighbors(vertex)
 	for _, neighbor := range neighbors {
 		row, col := neighbor%9, neighbor/9
 		if board[col][row] == 0 {
+			uncoloredNeighbors = append(uncoloredNeighbors, neighbor)
+		}
+	}
+	return uncoloredNeighbors
+}
+
+// optimized version of getUncoloredNeighbors using bitmasking
+func b_getUncoloredNeighbors(vertex int, board Grid) []int {
+    // Use a bitmask to track uncolored neighbors
+    var uncoloredMask uint32 = 0
+    neighbors := getNeighbors(vertex)
+
+    for _, neighbor := range neighbors {
+        row, col := neighbor%9, neighbor/9
+        if board[col][row] == 0 {
+            uncoloredMask |= (1 << neighbor) // Set the bit for the uncolored neighbor
+        }
+    }
+
+    // Collect uncolored neighbors
+	uncoloredNeighbors := []int{}
+	for neighbor := 0; neighbor < 81; neighbor++ {
+		if uncoloredMask&(1<<neighbor) != 0 { // Check if the bit for this neighbor is set
 			uncoloredNeighbors = append(uncoloredNeighbors, neighbor)
 		}
 	}
@@ -531,24 +612,23 @@ func test() {
 	easyPuzzles := loadPuzzleFromFile("puzzles/easy50.txt")
 	hardPuzzles := loadPuzzleFromFile("puzzles/top95.txt")
 	hardestPuzzles := loadPuzzleFromFile("puzzles/hardest.txt")
-	log.Printf("Loaded %d easy puzzles, %d hard puzzles, %d hardest puzzles\n", len(easyPuzzles), len(hardPuzzles), len(hardestPuzzles))
 
-	// combine all 3 puzzles into one array for testing
-	grids := append(easyPuzzles, hardPuzzles...)
-	grids = append(grids, hardestPuzzles...)
-
-	log.Printf("Solving %d Sudoku puzzles via backtracking...\n", len(grids))
+	totalPuzzleCount := len(easyPuzzles) + len(hardPuzzles) + len(hardestPuzzles)
+	fmt.Printf("\nSolving %d Sudoku puzzles via backtracking...\n", totalPuzzleCount)
 	backtrackingResultsArray := make([]struct {
 		solution Grid
 		solved   bool
 		duration time.Duration
-	}, len(grids))
+	}, totalPuzzleCount)
 
-	for i, grid := range grids {
+	i := 0
+	easyDuration := 0
+	for _, grid := range easyPuzzles {
 		startTime := time.Now()
 		solution, solved := backtrackingSolve(grid)
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
+		easyDuration += int(duration.Nanoseconds())
 		backtrackingResultsArray[i] = struct {
 			solution Grid
 			solved   bool
@@ -558,30 +638,75 @@ func test() {
 			solved:   solved,
 			duration: duration,
 		};
-		log.Printf("Grid %d solved: %t, Time taken: %s\n", i+1, solved, duration)
+		// log.Printf("Grid %d solved: %t, Time taken: %s\n", i+1, solved, duration)
+		i++
 	}
 
-	totalDuration := 0
-	for _, result := range backtrackingResultsArray {
-		totalDuration += int(result.duration.Nanoseconds())
+	hardDuration := 0
+	for _, grid := range hardestPuzzles {
+		startTime := time.Now()
+		solution, solved := backtrackingSolve(grid)
+		endTime := time.Now()
+		duration := endTime.Sub(startTime)
+		hardDuration += int(duration.Nanoseconds())
+		backtrackingResultsArray[i] = struct {
+			solution Grid
+			solved   bool
+			duration time.Duration
+		}{
+			solution: solution,
+			solved:   solved,
+			duration: duration,
+		};
+		// log.Printf("Grid %d solved: %t, Time taken: %s\n", i+1, solved, duration)
+		i++
 	}
-	avgDuration := time.Duration(totalDuration / len(backtrackingResultsArray))
-	log.Printf("Average time taken per puzzle: %s\n", avgDuration)
+
+	hardestDuration := 0
+	for _, grid := range easyPuzzles {
+		startTime := time.Now()
+		solution, solved := backtrackingSolve(grid)
+		endTime := time.Now()
+		duration := endTime.Sub(startTime)
+		hardestDuration += int(duration.Nanoseconds())
+		backtrackingResultsArray[i] = struct {
+			solution Grid
+			solved   bool
+			duration time.Duration
+		}{
+			solution: solution,
+			solved:   solved,
+			duration: duration,
+		};
+		// log.Printf("Grid %d solved: %t, Time taken: %s\n", i+1, solved, duration)
+		i++
+	}
+
+	println("\033[1mBacktracking results:\033[0m")
+	easyAvgDuration := time.Duration(easyDuration / len(easyPuzzles))
+	hardAvgDuration := time.Duration(hardDuration / len(hardPuzzles))
+	hardestAvgDuration := time.Duration(hardestDuration / len(hardestPuzzles))
+	fmt.Printf("> %d easy puzzles solved in %s\t (average time: %s)\n", len(easyPuzzles), time.Duration(easyDuration), easyAvgDuration)
+	fmt.Printf("> %d hard puzzles solved in %s\t (average time: %s)\n", len(hardPuzzles), time.Duration(hardDuration), hardAvgDuration)
+	fmt.Printf("> %d hardest puzzles solved in %s\t (average time: %s)\n", len(hardestPuzzles), time.Duration(hardestDuration), hardestAvgDuration)
 
 	println()
 
-	log.Printf("Solving %d Sudoku puzzles via graph coloring...\n", len(grids))
+	fmt.Printf("\nSolving %d Sudoku puzzles via graph coloring...\n", totalPuzzleCount)
 	coloringResultsArray := make([]struct {
 		solution Grid
 		solved   bool
 		duration time.Duration
-	}, len(grids))
+	}, totalPuzzleCount)
 
-	for i, grid := range grids {
+	i = 0
+	easyDuration = 0
+	for _, grid := range easyPuzzles {
 		startTime := time.Now()
 		solution, solved := coloringSolve(grid)
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
+		easyDuration += int(duration.Nanoseconds())
 		coloringResultsArray[i] = struct {
 			solution Grid
 			solved   bool
@@ -591,13 +716,55 @@ func test() {
 			solved:   solved,
 			duration: duration,
 		};
-		log.Printf("Grid %d solved: %t, Time taken: %s\n", i+1, solved, duration)
+		// log.Printf("Grid %d solved: %t, Time taken: %s\n", i+1, solved, duration)
+		i++
 	}
 
-	totalDuration = 0
-	for _, result := range coloringResultsArray {
-		totalDuration += int(result.duration.Nanoseconds())
+	hardDuration = 0
+	for _, grid := range hardPuzzles {
+		startTime := time.Now()
+		solution, solved := coloringSolve(grid)
+		endTime := time.Now()
+		duration := endTime.Sub(startTime)
+		hardDuration += int(duration.Nanoseconds())
+		coloringResultsArray[i] = struct {
+			solution Grid
+			solved   bool
+			duration time.Duration
+		}{
+			solution: solution,
+			solved:   solved,
+			duration: duration,
+		};
+		// log.Printf("Grid %d solved: %t, Time taken: %s\n", i+1, solved, duration)
+		i++
 	}
-	avgDuration = time.Duration(totalDuration / len(coloringResultsArray))
-	log.Printf("Average time taken per puzzle: %s\n", avgDuration)
+
+	hardestDuration = 0
+	for _, grid := range hardestPuzzles {
+		startTime := time.Now()
+		solution, solved := coloringSolve(grid)
+		endTime := time.Now()
+		duration := endTime.Sub(startTime)
+		hardestDuration += int(duration.Nanoseconds())
+		coloringResultsArray[i] = struct {
+			solution Grid
+			solved   bool
+			duration time.Duration
+		}{
+			solution: solution,
+			solved:   solved,
+			duration: duration,
+		};
+		// log.Printf("Grid %d solved: %t, Time taken: %s\n", i+1, solved, duration)
+		i++
+	}
+
+	println("\033[1mGraph coloring results:\033[0m")
+	easyAvgDuration = time.Duration(easyDuration / len(easyPuzzles))
+	hardAvgDuration = time.Duration(hardDuration / len(hardPuzzles))
+	hardestAvgDuration = time.Duration(hardestDuration / len(hardestPuzzles))
+	fmt.Printf("> %d easy puzzles solved in %s\t (average time: %s)\n", len(easyPuzzles), time.Duration(easyDuration), easyAvgDuration)
+	fmt.Printf("> %d hard puzzles solved in %s\t (average time: %s)\n", len(hardPuzzles), time.Duration(hardDuration), hardAvgDuration)
+	fmt.Printf("> %d hardest puzzles solved in %s\t (average time: %s)\n", len(hardestPuzzles), time.Duration(hardestDuration), hardestAvgDuration)
 }
