@@ -22,6 +22,8 @@ type AdjacencyMatrix [81][81]bool
 
 var allowedOrigins = []string{
 	"http://localhost:5173", // frontend origin
+	"http://lesedi.alwaysdata.net",
+	"https://lesedi.alwaysdata.net",
 }
 
 var adjMatrix, neighbors, graphDegrees = buildAdjacencyMatrix()
