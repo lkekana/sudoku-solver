@@ -247,6 +247,17 @@ func randomHandler(easyPuzzles, hardPuzzles, hardestPuzzles []Grid) http.Handler
 
 
 func main() {
+	// Alwaysdata sets IP and PORT env vars
+	host := os.Getenv("IP")
+	if host == "" {
+		// host = "::" // fallback to IPv6 any
+		host = "0.0.0.0"
+	}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5000"
+	}
+
 	fmt.Printf("Starting Sudoku solver server...\n")
 
 	if len(os.Args) > 1 {
@@ -267,8 +278,11 @@ func main() {
 	http.Handle("/", corsMiddleware(fs))
 	http.Handle("/solve", corsMiddleware(http.HandlerFunc(solveHandler)))
 	http.Handle("/random", corsMiddleware(http.HandlerFunc(randomHandler(easyPuzzles, hardPuzzles, hardestPuzzles))))
-	log.Println("Server running at http://localhost:5000")
-	log.Fatal(http.ListenAndServe(":5000", nil))
+	// log.Println("Server running at http://localhost:5000")
+	// log.Fatal(http.ListenAndServe(":5000", nil))
+	addr := host + ":" + port
+	log.Printf("Server running at http://localhost:%s (listening on %s)\n", port, addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
 // Backtracking solver (efficient for standard Sudoku)
