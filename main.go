@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"slices"
@@ -282,11 +283,20 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-	// log.Println("Server running at http://localhost:5000")
-	// log.Fatal(http.ListenAndServe(":5000", nil))
-	addr := host + ":" + port
-	log.Printf("Server running at http://localhost:%s (listening on %s)\n", port, addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+
+	// Build listen address
+    addr := net.JoinHostPort(host, port)
+
+	// Build a human-friendly URL for logging
+    displayHost := host
+    ip := net.ParseIP(host)
+    if ip != nil && ip.To4() == nil {
+        // IPv6 literal -> wrap in []
+        displayHost = "[" + host + "]"
+    }
+    log.Printf("Server running at http://%s:%s (listening on %s)\n", displayHost, port, addr)
+
+    log.Fatal(http.ListenAndServe(addr, nil))
 }
 
 // Backtracking solver (efficient for standard Sudoku)
