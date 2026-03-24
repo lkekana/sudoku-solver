@@ -21,7 +21,8 @@ type Grid [9][9]int
 type AdjacencyMatrix [81][81]bool
 
 var allowedOrigins = []string{
-	"http://localhost:5173", // frontend origin
+	"http://localhost:5173",
+	"http://localhost:5174", //sometimes 5173 is used so Vite falls back to 5174
 	"http://lesedi.alwaysdata.net",
 	"https://lesedi.alwaysdata.net",
 }
@@ -131,14 +132,24 @@ func (m AdjacencyMatrix) String() string {
 	return sb.String()
 }
 
+func isAllowedOrigin(origin string) bool {
+    for _, o := range allowedOrigins {
+        if origin == o {
+            return true
+        }
+    }
+    return false
+}
+
 func corsMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defaultOrigin := "http://localhost:5173"
 		origin := r.Header.Get("Origin")
-		if origin == "" {
-			origin = defaultOrigin
+
+		if isAllowedOrigin(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
 		}
-        w.Header().Set("Access-Control-Allow-Origin", origin)
+
         w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
@@ -249,6 +260,8 @@ func randomHandler(easyPuzzles, hardPuzzles, hardestPuzzles []Grid) http.Handler
 }
 
 
+
+
 func main() {
 	// Alwaysdata sets IP and PORT env vars
 	host := os.Getenv("IP")
@@ -281,10 +294,10 @@ func main() {
 	http.Handle("/", corsMiddleware(fs))
 	http.Handle("/solve", corsMiddleware(http.HandlerFunc(solveHandler)))
 	http.Handle("/random", corsMiddleware(http.HandlerFunc(randomHandler(easyPuzzles, hardPuzzles, hardestPuzzles))))
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/health", corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
-	})
+	})))
 
 	// Build listen address
     addr := net.JoinHostPort(host, port)
