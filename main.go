@@ -278,6 +278,10 @@ func main() {
 	http.Handle("/", corsMiddleware(fs))
 	http.Handle("/solve", corsMiddleware(http.HandlerFunc(solveHandler)))
 	http.Handle("/random", corsMiddleware(http.HandlerFunc(randomHandler(easyPuzzles, hardPuzzles, hardestPuzzles))))
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 	// log.Println("Server running at http://localhost:5000")
 	// log.Fatal(http.ListenAndServe(":5000", nil))
 	addr := host + ":" + port
