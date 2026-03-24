@@ -206,9 +206,11 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 	response := struct {
 		Solution Grid `json:"solution"`
 		SolveTime string `json:"solveTime"`
+		Algorithm string `json:"algorithm"`
 	}{
 		Solution: solution,
 		SolveTime: endTime.Sub(startTime).String(),
+		Algorithm: method,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

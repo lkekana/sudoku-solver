@@ -15,6 +15,26 @@ export type CellState = {
 
 const backendHosts = ["http://localhost:5000", "https://lesedi.alwaysdata.net"];
 
+type SolveMethod = "coloring" | "backtracking";
+type PuzzleDifficulty = "easy" | "hard" | "hardest";
+
+interface BackendResponse {
+	solution: number[][];
+	solveTime: string;
+	algorithm: SolveMethod;
+}
+
+const fullAlgorithmNames = (method: SolveMethod) => {
+	switch (method) {
+		case "coloring":
+			return "Graph Coloring";
+		case "backtracking":
+			return "Backtracking";
+		default:
+			throw new Error("Unknown solve method");
+	}
+}
+
 export default function Home() {
 	const [grid, setGrid] = useState<CellState[]>(
 		// Array(81).fill({ value: 0, isGiven: false, clear: false }),
@@ -28,6 +48,13 @@ export default function Home() {
 			clear: false,
 		})),
 	);
+	const [gridSolveMethod, setGridSolveMethod] = useState<
+		SolveMethod | undefined
+	>(undefined);
+	const [selectedSolveMethod, setSelectedSolveMethod] =
+		useState<SolveMethod>("coloring");
+	const [selectedDifficulty, setSelectedDifficulty] =
+		useState<PuzzleDifficulty>("easy");
 	const [solveTime, setSolveTime] = useState<string | undefined>(undefined);
 	const clueCount = useMemo(
 		() => grid.filter((cell) => cell.value !== 0).length,
@@ -40,8 +67,7 @@ export default function Home() {
 			const results = await Promise.allSettled(
 				backendHosts.map((host) =>
 					fetch(`${host}/health`).then((res) => {
-						if (!res.ok)
-							throw new Error(`Health check failed for ${host}`);
+						if (!res.ok) throw new Error(`Health check failed for ${host}`);
 						return host;
 					}),
 				),
@@ -49,8 +75,7 @@ export default function Home() {
 
 			const activeBackends = results
 				.filter(
-					(r): r is PromiseFulfilledResult<string> =>
-						r.status === "fulfilled",
+					(r): r is PromiseFulfilledResult<string> => r.status === "fulfilled",
 				)
 				.map((r) => r.value);
 
@@ -104,6 +129,8 @@ export default function Home() {
 			return;
 		}
 
+		setGridSolveMethod(selectedSolveMethod);
+
 		if (clueCount === 0) {
 			alert("You gotta give us a couple clues first :)");
 			return;
@@ -116,10 +143,10 @@ export default function Home() {
 			return;
 		}
 
-		if (clueCount === 81) {
-			alert("The puzzle is already complete! Clear some cells to solve.");
-			return;
-		}
+		// if (clueCount === 81) {
+		// 	alert("The puzzle is already complete! Clear some cells to solve.");
+		// 	return;
+		// }
 
 		const payload: number[][] = [];
 		for (let i = 0; i < 9; i++) {
@@ -135,7 +162,7 @@ export default function Home() {
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ grid: payload }),
+			body: JSON.stringify({ grid: payload, method: selectedSolveMethod }),
 		})
 			.then(async (response) => {
 				if (response.status === 422) {
@@ -144,7 +171,7 @@ export default function Home() {
 				}
 				return response.json();
 			})
-			.then((data) => {
+			.then((data: BackendResponse) => {
 				if (data.solution) {
 					const solution: number[][] = data.solution;
 					const newGrid: CellState[] = [];
@@ -162,15 +189,16 @@ export default function Home() {
 					if (data.solveTime) {
 						setSolveTime(data.solveTime);
 					}
+					if (data.algorithm) {
+						setGridSolveMethod(data.algorithm);
+					}
 				} else {
 					alert("No solution found for the given puzzle.");
 				}
 			})
 			.catch((error) => {
 				console.error("Error solving the puzzle:", error);
-				alert(
-					"An error occurred while solving the puzzle. Please try again.",
-				);
+				alert("An error occurred while solving the puzzle. Please try again.");
 			});
 	};
 
@@ -181,7 +209,9 @@ export default function Home() {
 			return;
 		}
 
-		fetch(`${backendURL}/random?difficulty=easy`)
+		setGridSolveMethod(undefined);
+
+		fetch(`${backendURL}/random?difficulty=${selectedDifficulty}`)
 			.then((response) => response.json())
 			.then((data) => {
 				if (data.grid) {
@@ -214,6 +244,7 @@ export default function Home() {
 		// clear inputs
 		setGrid(Array(81).fill({ value: 0, isGiven: false, clear: false }));
 		setSolveTime(undefined);
+		setGridSolveMethod(undefined);
 	};
 
 	if (query.isError) {
@@ -222,20 +253,21 @@ export default function Home() {
 				<h1 className="display-5 fw-bold">Error</h1>
 				<div className="col-lg-6 mx-auto">
 					<p className="lead mb-4">
-						Failed to connect to any backend server. Please try
-						again later.
+						Failed to connect to any backend server. Please try again later.
 					</p>
 				</div>
 			</div>
 		);
 	}
 
-	// const buttonsEnabled = !query.isLoading && query.data !== undefined && query.data.length > 0;
-	// console.log("Buttons enabled:", buttonsEnabled);
 	const buttonsDisabled =
 		query.isLoading || !query.data || query.data.length === 0;
-	console.log("Buttons disabled:", buttonsDisabled);
-	const solveDisabled = buttonsDisabled || clueCount === 81;
+	const differentSolveMethodSelected =
+		clueCount === 81 ?
+		gridSolveMethod !== undefined && gridSolveMethod !== selectedSolveMethod
+		: undefined;
+	const solveDisabled =
+		buttonsDisabled || (differentSolveMethodSelected !== undefined && !differentSolveMethodSelected);
 	const loadAndClearDisabled = buttonsDisabled || query.isLoading;
 
 	return (
@@ -247,21 +279,17 @@ export default function Home() {
 					<p className="lead mb-2">
 						{/* Enter the numbers in the puzzle & click on 'Solve' to
 						the see the solution. */}
-						Fill in some puzzle clues and click "Solve" to see the
-						solution!
+						Fill in some puzzle clues and click "Solve" to see the solution!
 					</p>
 					<Grid cellChangeFn={numValChanged} grid={grid} />
-					{solveTime && (
+					{solveTime && gridSolveMethod && (
 						<p className="mt-2">
-							Solved in <strong>{solveTime}</strong>!
+							Solved in <strong>{solveTime}</strong> using{" "} <strong>{fullAlgorithmNames(gridSolveMethod)}</strong>!
 						</p>
 					)}
 
 					<div className="mt-2 d-grid gap-2 d-sm-flex justify-content-sm-center">
-						<SolveButton
-							onClickFn={btnSolveClick}
-							disabled={solveDisabled}
-						/>
+						<SolveButton onClickFn={btnSolveClick} disabled={solveDisabled} differentSolveMethodSelected={differentSolveMethodSelected} />
 						<ClearButton
 							onClickFn={btnClearClick}
 							disabled={loadAndClearDisabled}
@@ -270,6 +298,39 @@ export default function Home() {
 							onClickFn={btnLoadClick}
 							disabled={loadAndClearDisabled}
 						/>
+					</div>
+
+					<div className="mt-3 d-grid gap-2 d-sm-flex justify-content-sm-center">
+						<select
+							className="mt-1 form-select"
+							aria-label="Random puzzle difficulty"
+							value={selectedDifficulty}
+							onChange={(e) =>
+								setSelectedDifficulty(e.target.value as PuzzleDifficulty)
+							}
+						>
+							<option value={undefined} disabled>
+								Random puzzle difficulty
+							</option>
+							<option value="easy">Easy</option>
+							<option value="hard">Hard</option>
+							<option value="hardest">Hardest</option>
+						</select>
+
+						<select
+							className="mt-1 form-select"
+							aria-label="Solving algorithm"
+							value={selectedSolveMethod}
+							onChange={(e) =>
+								setSelectedSolveMethod(e.target.value as SolveMethod)
+							}
+						>
+							<option value={undefined} disabled>
+								Solving algorithm
+							</option>
+							<option value="coloring">Graph Coloring</option>
+							<option value="backtracking">Backtracking</option>
+						</select>
 					</div>
 				</div>
 			</div>

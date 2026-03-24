@@ -1,9 +1,14 @@
 type SolveButtonProps = {
 	onClickFn: () => void;
 	disabled: boolean;
+	differentSolveMethodSelected?: boolean;
 };
 
-export default function SolveButton({ onClickFn, disabled }: SolveButtonProps) {
+export default function SolveButton({
+	onClickFn,
+	disabled,
+	differentSolveMethodSelected,
+}: SolveButtonProps) {
 	return (
 		<button
 			type="button"
@@ -12,7 +17,7 @@ export default function SolveButton({ onClickFn, disabled }: SolveButtonProps) {
 			onClick={onClickFn}
 			disabled={disabled}
 		>
-			Solve
+			{differentSolveMethodSelected ? "Re-Solve" : "Solve"}
 		</button>
 	);
 }
