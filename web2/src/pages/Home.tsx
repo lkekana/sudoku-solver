@@ -35,24 +35,27 @@ const fullAlgorithmNames = (method: SolveMethod) => {
 	}
 }
 
-export default function Home() {
-	const [grid, setGrid] = useState<CellState[]>(
-		// Array(81).fill({ value: 0, isGiven: false, clear: false }),
+const initialiseGrid = () => {
+	// return Array(81).fill({ value: 0, isGiven: false, clear: false });
 
-		// apparently the object method creates 81 copies of the same object reference
-		// (meaning updating one cell updates them all)
-		// so now, we'll give them individuality
-		Array.from({ length: 81 }, () => ({
-			value: 0,
-			isGiven: false,
-			clear: false,
-		})),
-	);
+	// apparently the object method creates 81 copies of the same object reference
+	// (meaning updating one cell updates them all)
+	// so now, we'll give them individuality
+	return Array.from({ length: 81 }, () => ({
+		value: 0,
+		isGiven: false,
+		clear: false,
+	}));
+};
+
+export default function Home() {
+	const [grid, setGrid] = useState<CellState[]>(initialiseGrid());
+	const [unsolvedGrid, setUnsolvedGrid] = useState<CellState[] | undefined>(undefined);
 	const [gridSolveMethod, setGridSolveMethod] = useState<
 		SolveMethod | undefined
 	>(undefined);
-	console.log(grid);
-	console.log(gridSolveMethod);
+	// console.log(grid);
+	// console.log(gridSolveMethod);
 	const [selectedSolveMethod, setSelectedSolveMethod] =
 		useState<SolveMethod>("coloring");
 	const [selectedDifficulty, setSelectedDifficulty] =
@@ -62,6 +65,7 @@ export default function Home() {
 		() => grid.filter((cell) => cell.value !== 0).length,
 		[grid],
 	);
+	console.log("Clue count:", clueCount);
 
 	const query = useQuery({
 		queryKey: ["activeBackends"],
@@ -148,11 +152,13 @@ export default function Home() {
 		// 	return;
 		// }
 
+		console.log("Unsolved grid:", unsolvedGrid);
+		const requestGrid: CellState[] = unsolvedGrid !== undefined ? unsolvedGrid : grid;
 		const payload: number[][] = [];
 		for (let i = 0; i < 9; i++) {
 			const row: number[] = [];
 			for (let j = 0; j < 9; j++) {
-				row.push(grid[i * 9 + j].value);
+				row.push(requestGrid[i * 9 + j].value);
 			}
 			payload.push(row);
 		}
@@ -185,6 +191,9 @@ export default function Home() {
 								clear: false,
 							});
 						}
+					}
+					if (unsolvedGrid === undefined) {
+						setUnsolvedGrid(requestGrid);
 					}
 					setGrid(newGrid);
 					if (data.solveTime) {
@@ -227,6 +236,7 @@ export default function Home() {
 						}
 					}
 					setGrid(newGrid);
+					setUnsolvedGrid(undefined);
 					setSolveTime(undefined);
 					setGridSolveMethod(undefined);
 				} else {
@@ -243,7 +253,8 @@ export default function Home() {
 
 	const btnClearClick = () => {
 		// clear inputs
-		setGrid(Array(81).fill({ value: 0, isGiven: false, clear: false }));
+		setGrid(initialiseGrid());
+		setUnsolvedGrid(undefined);
 		setSolveTime(undefined);
 		setGridSolveMethod(undefined);
 	};
