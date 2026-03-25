@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import ClearButton from "../components/ClearButton";
 import Footer from "../components/Footer";
 import Grid from "../components/Grid";
 import Header from "../components/Header";
 import SolveButton from "../components/SolveButton";
 import LoadButton from "../components/LoadButton";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 export type CellState = {
 	value: number;
@@ -51,6 +51,8 @@ export default function Home() {
 	const [gridSolveMethod, setGridSolveMethod] = useState<
 		SolveMethod | undefined
 	>(undefined);
+	console.log(grid);
+	console.log(gridSolveMethod);
 	const [selectedSolveMethod, setSelectedSolveMethod] =
 		useState<SolveMethod>("coloring");
 	const [selectedDifficulty, setSelectedDifficulty] =
@@ -129,8 +131,6 @@ export default function Home() {
 			return;
 		}
 
-		setGridSolveMethod(selectedSolveMethod);
-
 		if (clueCount === 0) {
 			alert("You gotta give us a couple clues first :)");
 			return;
@@ -157,12 +157,12 @@ export default function Home() {
 			payload.push(row);
 		}
 
-		fetch(`${backendURL}/solve`, {
+		fetch(`${backendURL}/solve?method=${selectedSolveMethod}`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ grid: payload, method: selectedSolveMethod }),
+			body: JSON.stringify({ grid: payload }),
 		})
 			.then(async (response) => {
 				if (response.status === 422) {
@@ -172,6 +172,7 @@ export default function Home() {
 				return response.json();
 			})
 			.then((data: BackendResponse) => {
+				console.log("Solve response:", data);
 				if (data.solution) {
 					const solution: number[][] = data.solution;
 					const newGrid: CellState[] = [];
@@ -209,7 +210,6 @@ export default function Home() {
 			return;
 		}
 
-		setGridSolveMethod(undefined);
 
 		fetch(`${backendURL}/random?difficulty=${selectedDifficulty}`)
 			.then((response) => response.json())
@@ -228,6 +228,7 @@ export default function Home() {
 					}
 					setGrid(newGrid);
 					setSolveTime(undefined);
+					setGridSolveMethod(undefined);
 				} else {
 					alert("Failed to load a random puzzle.");
 				}
