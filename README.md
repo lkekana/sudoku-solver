@@ -1,6 +1,6 @@
 # sudoku-solver
 
-A very fast Sudoku solver written in Go, with a web interface in React to allow users to input their own puzzles and see the solution.
+A very fast Sudoku solver written in Go, with a web interface in React to allow users to input their own puzzles and see the solution. [Try it out!](https://lesedi.alwaysdata.net/)
 
 <div style="display: flex; justify-content: center; gap: 10px;">
   <img src="./assets/puzzle1.png" alt="A screenshot of the web interface showing an unsolved Sudoku puzzle" height="299" width="287"/>
