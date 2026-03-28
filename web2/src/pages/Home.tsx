@@ -18,10 +18,18 @@ const backendHosts = ["http://localhost:5000", "https://lesedi.alwaysdata.net"];
 type SolveMethod = "coloring" | "backtracking";
 type PuzzleDifficulty = "easy" | "hard" | "hardest";
 
+interface Step {
+	action: string; // "+" or "-"
+	num: number;
+	row: number;
+	col: number;
+}
+
 interface BackendResponse {
 	solution: number[][];
 	solveTime: string;
 	algorithm: SolveMethod;
+	steps?: Step[];
 }
 
 const fullAlgorithmNames = (method: SolveMethod) => {
@@ -201,6 +209,9 @@ export default function Home() {
 					}
 					if (data.algorithm) {
 						setGridSolveMethod(data.algorithm);
+					}
+					if (data.steps) {
+						console.log("Solve steps:", data.steps);
 					}
 				} else {
 					alert("No solution found for the given puzzle.");

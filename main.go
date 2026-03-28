@@ -19,6 +19,12 @@ import (
 // Grid represents a 9x9 Sudoku board (0 = empty)
 type Grid [9][9]int
 type AdjacencyMatrix [81][81]bool
+type Step struct {
+    Action string `json:"action"` // "+" or "-"
+    Num    int    `json:"num"`
+    Row    int    `json:"row"`
+    Col    int    `json:"col"`
+}
 
 var allowedOrigins = []string{
 	"http://localhost:5173",
@@ -175,6 +181,7 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 
 	var input struct {
 		Grid Grid `json:"grid"`
+		ShowSteps bool `json:"showSteps,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		fmt.Printf("Error decoding JSON: %v\n", err)
@@ -189,12 +196,17 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 
 	var solution Grid
 	var solved bool
+	var steps *[]Step
+
+	if input.ShowSteps {
+		steps = &[]Step{}
+	}
 
 	startTime := time.Now()
 	if method == "backtracking" {
-		solution, solved = backtrackingSolve(input.Grid)
+		solution, solved = backtrackingSolve(input.Grid, steps)
 	} else {
-		solution, solved = coloringSolve(input.Grid)
+		solution, solved = coloringSolve(input.Grid, steps)
 	}
 	endTime := time.Now()
 
@@ -203,14 +215,20 @@ func solveHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if steps != nil {
+		log.Printf("Steps collected: %d", len(*steps))
+	}
+
 	response := struct {
 		Solution Grid `json:"solution"`
 		SolveTime string `json:"solveTime"`
 		Algorithm string `json:"algorithm"`
+		Steps *[]Step `json:"steps,omitempty"`
 	}{
 		Solution: solution,
 		SolveTime: endTime.Sub(startTime).String(),
 		Algorithm: method,
+		Steps: steps,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -316,19 +334,32 @@ func main() {
     log.Fatal(http.ListenAndServe(addr, nil))
 }
 
+func addStep(steps *[]Step, action string, num int, row int, col int) {
+	if steps != nil {
+		*steps = append(*steps, Step{
+			Action: action,
+			Num: num,
+			Row: row,
+			Col: col,
+		})
+	}
+}
+
 // Backtracking solver (efficient for standard Sudoku)
-func backtrackingSolve(board Grid) (Grid, bool) {
+func backtrackingSolve(board Grid, steps *[]Step) (Grid, bool) {
 	for row := 0; row < 9; row++ {
 		for col := 0; col < 9; col++ {
 			if board[row][col] == 0 {
 				for num := 1; num <= 9; num++ {
 					if isValidOption(board, row, col, num) {
 						board[row][col] = num
+						addStep(steps, "+", num, row, col)
 
-						if solvedBoard, ok := backtrackingSolve(board); ok {
+						if solvedBoard, ok := backtrackingSolve(board, steps); ok {
 							return solvedBoard, true
 						}
 						board[row][col] = 0 // backtrack
+						addStep(steps, "-", num, row, col)
 					}
 				}
 				return board, false
@@ -340,13 +371,13 @@ func backtrackingSolve(board Grid) (Grid, bool) {
 
 // use Brelaz Graph Coloring algorithm to solve Sudoku
 // we will use each digit (1-9) as a color
-func coloringSolve(board Grid) (Grid, bool) {
+func coloringSolve(board Grid, steps *[]Step) (Grid, bool) {
 	vertexSaturation := initVertexSaturation(board)
 	uncoloredNeighborsDegree := initUncoloredNeighborsDegrees(board)
-	return coloringSolveRecursive(board, vertexSaturation, uncoloredNeighborsDegree)
+	return coloringSolveRecursive(board, vertexSaturation, uncoloredNeighborsDegree, steps)
 }
 
-func coloringSolveRecursive(board Grid, vertexSaturation [81]int, uncoloredNeighborsDegree [81]int) (Grid, bool) {
+func coloringSolveRecursive(board Grid, vertexSaturation [81]int, uncoloredNeighborsDegree [81]int, steps *[]Step) (Grid, bool) {
 	if board.colouringComplete() {
 		return board, isValidGrid(board)
 	}
@@ -358,6 +389,7 @@ func coloringSolveRecursive(board Grid, vertexSaturation [81]int, uncoloredNeigh
 		newBoard := board
 		row, col := i%9, i/9
 		newBoard[col][row] = color
+		addStep(steps, "+", color, col, row)
 
 		newSaturation := vertexSaturation
 		newDegree := uncoloredNeighborsDegree
@@ -373,10 +405,10 @@ func coloringSolveRecursive(board Grid, vertexSaturation [81]int, uncoloredNeigh
 			newDegree[u]--
 		}
 
-		if solvedBoard, ok := coloringSolveRecursive(newBoard, newSaturation, newDegree); ok {
+		if solvedBoard, ok := coloringSolveRecursive(newBoard, newSaturation, newDegree, steps); ok {
 			return solvedBoard, true
 		}
-
+		addStep(steps, "-", color, col, row)
 	}
 	return board, false
 }
@@ -711,7 +743,7 @@ func test() {
 	easyDuration := 0
 	for _, grid := range easyPuzzles {
 		startTime := time.Now()
-		solution, solved := backtrackingSolve(grid)
+		solution, solved := backtrackingSolve(grid, nil)
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
 		easyDuration += int(duration.Nanoseconds())
@@ -731,7 +763,7 @@ func test() {
 	hardDuration := 0
 	for _, grid := range hardestPuzzles {
 		startTime := time.Now()
-		solution, solved := backtrackingSolve(grid)
+		solution, solved := backtrackingSolve(grid, nil)
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
 		hardDuration += int(duration.Nanoseconds())
@@ -751,7 +783,7 @@ func test() {
 	hardestDuration := 0
 	for _, grid := range easyPuzzles {
 		startTime := time.Now()
-		solution, solved := backtrackingSolve(grid)
+		solution, solved := backtrackingSolve(grid, nil)
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
 		hardestDuration += int(duration.Nanoseconds())
@@ -790,7 +822,7 @@ func test() {
 	easyDuration = 0
 	for _, grid := range easyPuzzles {
 		startTime := time.Now()
-		solution, solved := coloringSolve(grid)
+		solution, solved := coloringSolve(grid, nil)
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
 		easyDuration += int(duration.Nanoseconds())
@@ -810,7 +842,7 @@ func test() {
 	hardDuration = 0
 	for _, grid := range hardPuzzles {
 		startTime := time.Now()
-		solution, solved := coloringSolve(grid)
+		solution, solved := coloringSolve(grid, nil)
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
 		hardDuration += int(duration.Nanoseconds())
@@ -830,7 +862,7 @@ func test() {
 	hardestDuration = 0
 	for _, grid := range hardestPuzzles {
 		startTime := time.Now()
-		solution, solved := coloringSolve(grid)
+		solution, solved := coloringSolve(grid, nil)
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
 		hardestDuration += int(duration.Nanoseconds())
